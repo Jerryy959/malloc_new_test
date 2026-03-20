@@ -1,6 +1,6 @@
 # malloc_new_test
 
-这是一个**直接使用 `malloc_new` 源码**的 VTune 热点分析测试仓库。和上一版不同，这个仓库现在不是只靠 `LD_PRELOAD` 或系统 `malloc/free` 做压测，而是把 `malloc_new` 的源码直接作为子目录引入，并在所有 benchmark 中显式调用：
+这是一个**直接面向 `malloc_new` 源码**的 VTune 热点分析测试仓库。当前仓库本身**不再提交 `malloc_new` 的实现文件**，而是在 CMake 配置阶段自动获取上游 `malloc_new`，然后让所有 benchmark 显式调用：
 
 - `hp_malloc / hp_free / hp_realloc / hp_calloc`
 - `malloc_new::compat::*`
@@ -10,18 +10,33 @@
 
 ## 1. 当前接入方式
 
-仓库已内置上游 `malloc_new` 的源码布局：
+顶层 `CMakeLists.txt` 现在有两种接入模式：
 
-- `third_party/malloc_new/include/malloc_new/allocator.hpp`
-- `third_party/malloc_new/src/huge_page_allocator.cpp`
-- `third_party/malloc_new/src/compat.cpp`
+1. **默认模式**：在 CMake 配置阶段自动 clone `malloc_new`
+2. **覆盖模式**：通过 `-DMALLOC_NEW_SOURCE_DIR=/path/to/malloc_new` 指向你本地已有源码
 
-并在顶层 `CMakeLists.txt` 中通过 `add_subdirectory(third_party/malloc_new)` 显式导入 `malloc_new` 静态库目标，然后让所有 benchmark 链接这个目标。
+默认 clone 参数：
+
+- `MALLOC_NEW_GIT_REPOSITORY=https://github.com/Jerryy959/malloc_new.git`
+- `MALLOC_NEW_GIT_TAG=main`
+
+如果上游仓库后来切分支、改 tag，直接改这两个 CMake cache 变量即可。
 
 ## 2. 构建
 
+### 2.1 自动 clone 上游 malloc_new
+
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+```
+
+### 2.2 使用本地已有 malloc_new 源码
+
+```bash
+cmake -S . -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DMALLOC_NEW_SOURCE_DIR=/path/to/malloc_new
 cmake --build build -j
 ```
 
@@ -39,7 +54,7 @@ cmake --build build -j
 - `burst_contention`
 - `new_delete_mix`
 
-## 4. 每个 benchmark 现在实际调用的 malloc_new 接口
+## 4. 每个 benchmark 实际调用的 malloc_new 接口
 
 - `latency_fixed` / `latency_size_sweep` / `thread_cache_churn` / `remote_free` / `large_alloc` / `fragmentation_reuse` / `burst_contention`：通过 `malloc_new::compat::malloc/free` 间接走到 `hp_malloc/hp_free`
 - `realloc_growth`：通过 `malloc_new::compat::malloc/realloc/free` 直接覆盖 `hp_realloc`
